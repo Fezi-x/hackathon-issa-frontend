@@ -2,6 +2,8 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 export interface ChatResponse {
   reply: string
+  prompt_version?: number
+  prompt_preview?: string
 }
 
 export const sendMessage = async (sessionId: string, message: string): Promise<ChatResponse> => {
@@ -28,7 +30,11 @@ export const sendMessage = async (sessionId: string, message: string): Promise<C
       throw new Error("Invalid response format from API")
     }
 
-    return { reply: data.reply }
+    return { 
+      reply: data.reply,
+      prompt_version: data.prompt_version,
+      prompt_preview: data.prompt_preview
+    }
   } catch (error) {
     if (error instanceof Error) {
       throw error

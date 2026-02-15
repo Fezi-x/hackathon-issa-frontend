@@ -7,12 +7,19 @@ import { sendMessage } from "@/lib/api"
 import MessageBubble from "./MessageBubble"
 import ChatInput from "./ChatInput"
 import ChatLayout from "./ChatLayout"
+import PromptDiff from "./PromptDiff"
 
 export default function ChatWindow() {
     const [messages, setMessages] = useState<Message[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
+
+    // Prompt Update States
+    const [promptVersion, setPromptVersion] = useState<number | null>(null)
+    const [promptPreview, setPromptPreview] = useState<string>("")
+    const [previousPromptPreview, setPreviousPromptPreview] = useState<string>("")
+    const [showPromptUpdate, setShowPromptUpdate] = useState(false)
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -21,6 +28,17 @@ export default function ChatWindow() {
     useEffect(() => {
         scrollToBottom()
     }, [messages])
+
+    // Auto-dismiss Effect
+    useEffect(() => {
+        if (showPromptUpdate) {
+            const timer = setTimeout(() => {
+                setShowPromptUpdate(false)
+            }, 8000)
+
+            return () => clearTimeout(timer)
+        }
+    }, [showPromptUpdate])
 
     const handleSendMessage = async (content: string) => {
         if (loading) return
@@ -34,8 +52,20 @@ export default function ChatWindow() {
             const sessionId = getSessionId()
             const response = await sendMessage(sessionId, content)
 
-            const assistantMessage: Message = { role: "assistant", content: response.reply }
-            setMessages((prev) => [...prev, assistantMessage])
+            setMessages((prev) => [
+                ...prev,
+                { role: "assistant", content: response.reply }
+            ])
+
+            if (response.prompt_version !== undefined) {
+                if (promptVersion && response.prompt_version > promptVersion) {
+                    setPreviousPromptPreview(promptPreview)
+                    setShowPromptUpdate(true)
+                }
+
+                setPromptVersion(response.prompt_version)
+                setPromptPreview(response.prompt_preview || "")
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to send message. Please try again.")
         } finally {
@@ -103,6 +133,58 @@ export default function ChatWindow() {
                 >
                     Clear History
                 </button>
+            </div>
+
+            {/* Permanent Version Badge & Diff Panel */}
+            <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3 pointer-events-none">
+                {showPromptUpdate && (
+                    <div className="pointer-events-auto w-80 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl rounded-2xl p-4 animate-fade-in ring-1 ring-zinc-900/5 backdrop-blur-xl">
+                        <div className="flex justify-between items-center mb-3">
+                            <div className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                Version Changes (v{promptVersion})
+                            </div>
+                            <button
+                                onClick={() => setShowPromptUpdate(false)}
+                                className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors p-1"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                            <PromptDiff
+                                oldText={previousPromptPreview}
+                                newText={promptPreview}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {promptVersion !== null && (
+                    <button
+                        onClick={() => setShowPromptUpdate(!showPromptUpdate)}
+                        className={`pointer-events-auto flex items-center gap-2.5 px-4 py-2 rounded-full border shadow-sm transition-all duration-300 active:scale-95 group ${showPromptUpdate
+                                ? 'bg-zinc-900 border-zinc-900 text-white'
+                                : 'bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-700'
+                            }`}
+                    >
+                        <span className={`w-2 h-2 rounded-full ${showPromptUpdate ? 'bg-green-400' : 'bg-green-500 pulse-green'}`} />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">
+                            Prompt v{promptVersion}
+                        </span>
+                        <svg
+                            className={`w-3 h-3 transition-transform duration-300 ${showPromptUpdate ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="Specifies if version update dropdown is active" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+                        </svg>
+                    </button>
+                )}
             </div>
         </ChatLayout>
     )
